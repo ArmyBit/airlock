@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import collections
 import csv
 import io
 import live_feed
@@ -28,6 +29,11 @@ import virustotal
 from triage_state import TriageState
 
 WEBUI = Path(__file__).resolve().parent / "webui"
+# the user's sign-off that this machine is ready to triage: a timestamp, kept
+# next to the VirusTotal key and out of the repository
+CONFIGURED_FILE = Path.home() / ".config" / "triage" / "configured"
+# environment checks touch libvirt, so they are cached, not recomputed per poll
+ENV_CACHE_SECONDS = 30.0
 DEFAULT_PORT = 8765
 MAX_BODY = 1 << 20
 
@@ -187,7 +193,7 @@ def report_pdf(report: dict, device: dict | None = None) -> bytes:
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
                             leftMargin=14 * mm, rightMargin=14 * mm,
                             topMargin=12 * mm, bottomMargin=12 * mm,
-                            title="Storage triage report")
+                            title="Airlock forensic report")
     title = ParagraphStyle("title", fontName="Helvetica-Bold", fontSize=20,
                            leading=24, textColor=ink)
     heading = ParagraphStyle("heading", fontName="Helvetica-Bold", fontSize=11,
@@ -205,7 +211,7 @@ def report_pdf(report: dict, device: dict | None = None) -> bytes:
     head_cell = ParagraphStyle("head", parent=cell, fontName="Helvetica-Bold",
                                textColor=soft)
 
-    story = [Paragraph("Storage triage — forensic report", title)]
+    story = [Paragraph("Airlock — forensic report", title)]
     if device:
         bits = [device.get("devnode", ""),
                 device.get("size_human") or device.get("size", ""),
@@ -307,6 +313,11 @@ class Actions:
         self._listener = None
         self._scan_thread = None
         self._boot_thread = None
+        self._build_thread = None
+        self._build_log: collections.deque = collections.deque(maxlen=200)
+        self._build_error: str = ""
+        self._env_checks: list = []
+        self._env_at: float = 0.0
         self._reconcile_lock = threading.Lock()
 
     @property
@@ -396,6 +407,130 @@ class Actions:
         self.state.move(ts.READY if self.state.vm.get("running") else ts.IDLE,
                         "device forgotten", force=True)
         return 200, "the device was forgotten"
+
+    # -- environment setup ----------------------------------------------------
+
+    def environment_status(self) -> dict:
+        """What the settings page shows: one check per prerequisite, the build
+        state, and whether the user has flagged this machine as configured."""
+        now = time.monotonic()
+        if now - self._env_at > ENV_CACHE_SECONDS or not self._env_checks:
+            self._env_checks = self._environment_checks()
+            self._env_at = now
+        try:
+            stamp = CONFIGURED_FILE.read_text().strip()
+        except OSError:
+            stamp = ""
+        build_thread = self._build_thread
+        return {
+            "checks": self._env_checks,
+            "ready": all(check["ok"] for check in self._env_checks),
+            "configured": bool(stamp),
+            "configured_at": stamp,
+            "build": {
+                "running": bool(build_thread is not None and build_thread.is_alive()),
+                "error": self._build_error,
+                "log": list(self._build_log)[-40:],
+            },
+        }
+
+    def _environment_checks(self) -> list:
+        """Each prerequisite on its own, so one red line says exactly what to
+        fix. Nothing here may raise: a check that cannot even run is a failed
+        check, not a crashed settings page."""
+        import os
+        checks = []
+
+        def check(id: str, label: str, func):
+            try:
+                ok, detail = func()
+            except Exception as exc:                  # noqa: BLE001
+                ok, detail = False, f"{type(exc).__name__}: {exc}"
+            checks.append({"id": id, "label": label, "ok": bool(ok),
+                           "detail": detail or ""})
+
+        def files():
+            import triage_vm
+            missing = [str(target) for target in
+                       (triage_vm.GOLDEN, triage_vm.INITRAMFS, triage_vm.KEY)
+                       if not target.exists()]
+            if missing:
+                return False, "missing: " + ", ".join(missing)
+            return True, "golden image, initramfs and ssh key are staged"
+
+        def libvirt():
+            import triage_vm
+            import libvirt_vm as lv
+            problems = lv.access_problems(lv.default_kernel(),
+                                          str(triage_vm.INITRAMFS))
+            if problems:
+                return False, "; ".join(problems)
+            return True, "libvirt can read the boot files"
+
+        def vt_key():
+            if virustotal.read_key():
+                return True, "a key is stored outside the repository"
+            return False, ("no key: put one in ~/.config/triage/virustotal "
+                           "(mode 600) or set TRIAGE_VT_KEY")
+
+        def buildable():
+            import shutil
+            if os.geteuid() == 0:
+                return True, "running as root, so it builds directly"
+            if shutil.which("fakeroot"):
+                return True, ("fakeroot stands in for root: ownership in "
+                               "the image is still correct")
+            return False, ("neither root nor fakeroot: install fakeroot "
+                           "or run the app as root to build (scanning "
+                           "needs neither)")
+
+        check("files", "Guest image staged", files)
+        check("libvirt", "Libvirt can boot it", libvirt)
+        check("virustotal", "VirusTotal key present", vt_key)
+        check("build", "Can build the image", buildable)
+        return checks
+
+    def start_build(self) -> tuple:
+        """Rebuilds the golden image in the background. Refused while anything
+        runs off the current image, and while a build is already going."""
+        thread = self._build_thread
+        if thread is not None and thread.is_alive():
+            return 409, "a build is already running"
+        if self.state.vm.get("running") or self.state.snapshot()["busy"]:
+            return 409, ("stop the VM and finish or forget the device first: "
+                         "rebuilding under a running guest is not safe")
+        self._build_error = ""
+        self._build_log.clear()
+        self._build_thread = threading.Thread(target=self._build_worker,
+                                              name="build-image", daemon=True)
+        self._build_thread.start()
+        return 202, "building the golden image in the background"
+
+    def _build_worker(self) -> None:
+        import triage_vm
+        self.state.say("building the golden image; this takes minutes", "info")
+        try:
+            triage_vm.build_image(progress=self._build_log.append)
+        except Exception as exc:                      # noqa: BLE001
+            self._build_error = str(exc)[:300]
+            self.state.say(f"the build failed: {exc}", "error")
+            return
+        self._env_at = 0.0               # the file checks are stale now
+        self.state.say("the golden image is built", "info")
+
+    def set_configured(self, configured: bool) -> tuple:
+        """The user's sign-off that this machine is ready. A timestamp, so a
+        stale flag from a previous install is at least visibly old."""
+        try:
+            if configured:
+                CONFIGURED_FILE.parent.mkdir(parents=True, exist_ok=True)
+                CONFIGURED_FILE.write_text(time.strftime("%Y-%m-%d %H:%M %Z"))
+            elif CONFIGURED_FILE.exists():
+                CONFIGURED_FILE.unlink()
+        except OSError as exc:
+            return 500, f"could not write the flag: {exc}"
+        return 200, ("environment flagged as configured"
+                     if configured else "configuration flag cleared")
 
     def device_removed(self, devnode: str) -> None:
         """The subject disk was unplugged: stop everything and start over.
@@ -722,7 +857,7 @@ class Actions:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "triage-web/1.0"
+    server_version = "airlock/1.0"
     protocol_version = "HTTP/1.1"
 
     # set by serve()
@@ -788,8 +923,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._static(route.path[len("/static/"):])
         if route.path == "/api/report.pdf":
             return self._report_pdf(parse_qs(route.query))
+        if route.path == "/api/settings":
+            return self._settings(parse_qs(route.query))
+        if route.path == "/api/settings/build":
+            return self._settings_build(parse_qs(route.query))
+        if route.path == "/api/settings/configured":
+            return self._settings_configured(parse_qs(route.query))
         if route.path == "/api/state":
             snapshot = self.state.snapshot()
+            try:
+                environment = self.actions.environment_status()
+                snapshot["environment"] = {
+                    "configured": environment["configured"],
+                    "ready": environment["ready"]}
+            except Exception:                         # noqa: BLE001
+                snapshot["environment"] = {"configured": False,
+                                           "ready": False}
             listener = self.actions._listener
             snapshot["listener"] = (listener.status() if listener is not None
                                    else {"listening": False, "baseline": [],
@@ -806,6 +955,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = urlparse(self.path).path
+        # settings are outside the state machine: no allowed-actions gating,
+        # just the session token
+        if route == "/api/settings/build":
+            return self._settings_build(parse_qs(urlparse(self.path).query))
+        if route == "/api/settings/configured":
+            return self._settings_configured(parse_qs(urlparse(self.path).query))
         if not self._authorised():
             return None
         body = self._body()
@@ -824,6 +979,46 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(500, {"error": str(exc)})
         return self._json(code, {"message": message, "state": self.state.snapshot()})
 
+    def _settings_token(self, query: dict):
+        provided = self.headers.get("X-Triage-Token") or \
+            (query.get("token") or [None])[0]
+        if not live_feed.token_ok(provided, self.token):
+            self._json(403, {"error": "bad or missing session token"})
+            return None
+        return True
+
+    def _settings(self, query: dict) -> None:
+        if not self._settings_token(query):
+            return None
+        return self._json(200, self.actions.environment_status())
+
+    def _settings_build(self, query: dict) -> None:
+        if not self._settings_token(query):
+            return None
+        if self.command != "POST":
+            return self._json(405, {"error": "build with POST"})
+        code, message = self.actions.start_build()
+        status = self.actions.environment_status()
+        if code == 202:
+            return self._json(202, {"message": message, "build": status["build"]})
+        return self._json(code, {"error": message})
+
+    def _settings_configured(self, query: dict) -> None:
+        if not self._settings_token(query):
+            return None
+        if self.command != "POST":
+            return self._json(405, {"error": "flag with POST"})
+        try:
+            configured = bool(self._body().get("configured", True))
+        except (ValueError, AttributeError):
+            configured = True
+        code, message = self.actions.set_configured(configured)
+        status = self.actions.environment_status()
+        key = "message" if code == 200 else "error"
+        payload = {key: message, "configured": status["configured"],
+                   "configured_at": status["configured_at"]}
+        return self._json(code, payload)
+
     def _report_pdf(self, query: dict) -> None:
         """The download. The token can ride in a header or the query string,
         because a plain link cannot carry a header."""
@@ -838,7 +1033,7 @@ class Handler(BaseHTTPRequestHandler):
         body = report_pdf(report, device)
         stamp = time.strftime("%Y%m%d-%H%M%S")
         slug = (device.get("devnode") or "device").replace("/", "-") if device else "device"
-        name = f"triage-{slug}-{stamp}.pdf"
+        name = f"airlock-{slug}-{stamp}.pdf"
         self.send_response(200)
         self.send_header("Content-Type", "application/pdf")
         self.send_header("Content-Length", str(len(body)))

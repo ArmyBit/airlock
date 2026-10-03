@@ -74,16 +74,36 @@ def stage_command(command: str) -> str:
             f"  # run: cd {PROJECT_DIR} && {command}")
 
 
-def build_image() -> None:
-    """Rebuilds the golden image from source, including the collector."""
-    if os.geteuid() != 0:
-        raise VmError("building the golden image needs root:\n  " +
+def build_image(progress=None) -> None:
+    """Rebuilds the golden image from source, including the collector.
+
+    `progress`, when given, receives each output line as it is printed, so a
+    UI can stream a build that takes minutes instead of showing nothing until
+    the end. Omitting it keeps the old run-to-completion behaviour.
+
+    Root is not required: the script was written without chroot or loop
+    mounts, and the single root-owned directory it creates (sshd's
+    privilege-separation dir) is faked with fakeroot, which also makes every
+    other file in the image correctly root-owned instead of owned by whoever
+    ran the build.
+    """
+    if os.geteuid() != 0 and shutil.which("fakeroot") is None:
+        raise VmError("building the golden image needs root or fakeroot "
+                      "(install fakeroot, or run:\n  " +
                       stage_command(f"python3 {BUILD_SCRIPT}"))
-    done = subprocess.run(["python3", str(BUILD_SCRIPT)],
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    if done.returncode != 0:
-        tail = done.stdout.decode("utf-8", "replace").strip().splitlines()[-6:]
-        raise VmError("the golden image build failed:\n  " + "\n  ".join(tail))
+    say = progress or (lambda line: None)
+    prefix = [] if os.geteuid() == 0 else ["fakeroot"]
+    child = subprocess.Popen(prefix + ["python3", str(BUILD_SCRIPT)],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, errors="replace")
+    tail = []
+    for line in child.stdout:
+        line = line.rstrip()
+        tail.append(line)
+        tail = tail[-200:]
+        say(line)
+    if child.wait() != 0:
+        raise VmError("the golden image build failed:\n  " + "\n  ".join(tail[-6:]))
 
 
 def stage_boot_files() -> None:

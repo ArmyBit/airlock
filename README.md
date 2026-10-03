@@ -1,4 +1,4 @@
-# Storage Triage
+# Airlock
 
 USB storage forensics without ever mounting evidence on the host. Plug a drive
 in and the app walks itself through the investigation: it boots a disposable
@@ -46,8 +46,31 @@ python3 web_server.py
 # open http://127.0.0.1:8765 and plug a USB drive in
 ```
 
+## Settings
+
+The gear button (top right) opens settings:
+
+- **Environment** - one line per prerequisite: guest image staged, libvirt
+  able to boot it, VirusTotal key present, and whether the app runs as root.
+- **Golden image** - rebuilds `golden.qcow2` in the background with live
+  output. Refused while the VM runs or a scan is active, since rebuilding
+  under a running guest is not safe. Needs root.
+- **Setup** - flags the machine as configured (a timestamp in
+  `~/.config/triage/configured`). Until flagged, step 1 shows a reminder to
+  open settings.
+
 Stopping the app destroys the VM. Unplugging the drive mid-flow does the same
 and returns the UI to the start.
+
+## Screens
+
+| awaitingDevice | deviceIntake |
+|---|---|
+| ![awaiting device](docs/1-awaitingDevice.png) | ![device intake](docs/2-deviceIntake.png) |
+
+| forensicAnalysis | triageReport |
+|---|---|
+| ![forensic analysis](docs/3-forensicAnalysis.png) | ![triage report](docs/4-triageReport.png) |
 
 ## Tests
 

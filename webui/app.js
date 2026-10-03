@@ -306,7 +306,7 @@ async function exportReport() {
     const link = document.createElement("a");
     link.href = url;
     link.download = (response.headers.get("Content-Disposition") || "")
-      .match(/filename="([^"]+)"/)?.[1] || "triage-report.pdf";
+      .match(/filename="([^"]+)"/)?.[1] || "airlock-report.pdf";
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -361,6 +361,8 @@ function fillLog(events) {
 
 function render(s) {
   known = s;
+  const setupHint = $("setup-hint");
+  if (setupHint) setupHint.hidden = !!(s.environment && s.environment.configured);
   const step = stepFor(s);
   renderStep(step);
   renderRailNote(s);
@@ -461,6 +463,126 @@ function showError(text) {
   el.textContent = text || "";
   el.hidden = !text;
 }
+
+// -- settings: prepare the machine, flag it configured -------------------------
+
+let settingsTimer = null;
+
+async function loadSettings() {
+  let status;
+  try {
+    const response = await fetch("/api/settings", {
+      headers: { "X-Triage-Token": window.TRIAGE_TOKEN },
+    });
+    status = await response.json();
+    if (!response.ok) throw new Error(status.error || response.status);
+  } catch (err) {
+    setText("build-status", `could not read settings: ${err}`);
+    return;
+  }
+  const list = $("env-checks");
+  list.textContent = "";
+  (status.checks || []).forEach((check) => {
+    const li = document.createElement("li");
+    if (!check.ok) li.className = "bad";
+    const dot = document.createElement("span");
+    dot.className = "dot" + (check.ok ? " on" : "");
+    if (!check.ok) dot.style.background = "var(--bad)";
+    const label = document.createElement("span");
+    label.textContent = check.label;
+    const detail = document.createElement("span");
+    detail.className = "detail";
+    detail.textContent = check.detail || "";
+    li.append(dot, label, detail);
+    list.appendChild(li);
+  });
+
+  const build = status.build || {};
+  const buildBtn = $("btn-build");
+  buildBtn.disabled = !!build.running;
+  buildBtn.textContent = build.running ? "Building…" : "Build golden image";
+  setText("build-status", build.running
+    ? "building now — progress lines appear below and in events"
+    : (build.error || ""));
+  const log = $("build-log");
+  if ((build.log || []).length) {
+    log.hidden = false;
+    log.textContent = build.log.join("\n");
+    log.scrollTop = log.scrollHeight;
+  } else {
+    log.hidden = true;
+  }
+
+  setText("configured-line", status.configured
+    ? `flagged as configured${status.configured_at ? ` on ${status.configured_at}` : ""}`
+    : "not flagged yet — flag it once the checks above are green");
+  const flagBtn = $("btn-configured");
+  flagBtn.textContent = status.configured ? "Unmark configured" : "Mark as configured";
+  flagBtn.dataset.want = status.configured ? "0" : "1";
+}
+
+async function postSettings(path, body) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Triage-Token": window.TRIAGE_TOKEN },
+    body: JSON.stringify(body || {}),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) showError(payload.error || `${path} failed`);
+  await loadSettings();
+}
+
+$("btn-settings").addEventListener("click", () => {
+  $("settings-dialog").showModal();
+  loadSettings();
+  clearInterval(settingsTimer);
+  settingsTimer = setInterval(loadSettings, 2000);
+});
+$("btn-settings-close").addEventListener("click", () => {
+  $("settings-dialog").close();
+  clearInterval(settingsTimer);
+});
+$("settings-dialog").addEventListener("close", () => clearInterval(settingsTimer));
+$("settings-dialog").addEventListener("click", (event) => {
+  if (event.target === $("settings-dialog")) {
+    $("settings-dialog").close();
+    clearInterval(settingsTimer);
+  }
+});
+$("btn-build").addEventListener("click", () => postSettings("/api/settings/build"));
+$("btn-configured").addEventListener("click", (event) =>
+  postSettings("/api/settings/configured",
+               { configured: event.target.dataset.want !== "0" }));
+
+// -- the tour: four example pages, no real state touched -------------------------
+
+let tourPage = 1;
+
+function showTour(page) {
+  tourPage = Math.min(4, Math.max(1, page));
+  document.querySelectorAll("[data-tour]").forEach((section) => {
+    section.hidden = Number(section.dataset.tour) !== tourPage;
+  });
+  document.querySelectorAll("[data-tour-dot]").forEach((dot) => {
+    dot.classList.toggle("on", Number(dot.dataset.tourDot) === tourPage);
+  });
+  $("btn-tour-back").disabled = tourPage === 1;
+  $("btn-tour-next").textContent = tourPage === 4 ? "done" : "next";
+}
+
+$("btn-tour").addEventListener("click", () => {
+  showTour(1);
+  $("tour-dialog").showModal();
+});
+$("btn-tour-close").addEventListener("click", () => $("tour-dialog").close());
+$("tour-dialog").addEventListener("click", (event) => {
+  if (event.target === $("tour-dialog")) $("tour-dialog").close();
+});
+$("btn-tour-back").addEventListener("click", () => showTour(tourPage - 1));
+$("btn-tour-next").addEventListener("click", () => {
+  if (tourPage === 4) $("tour-dialog").close();
+  else showTour(tourPage + 1);
+});
 
 // -- the events dialog -------------------------------------------------------
 

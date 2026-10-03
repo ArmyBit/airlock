@@ -511,7 +511,7 @@ button.alert { color: var(--bad); border-color: rgba(179, 38, 30, 0.5); }
 
 /* --- the events dialog --- */
 
-dialog#log-dialog {
+dialog.modal {
   width: min(880px, 92vw);
   height: min(70vh, 640px);
   padding: 0;
@@ -521,17 +521,17 @@ dialog#log-dialog {
   color: var(--text);
   box-shadow: var(--shadow);
 }
-dialog#log-dialog[open] { display: flex; flex-direction: column; }
-dialog#log-dialog::backdrop { background: rgba(23, 32, 46, 0.45); backdrop-filter: blur(3px); }
-dialog#log-dialog .head {
+dialog.modal[open] { display: flex; flex-direction: column; }
+dialog.modal::backdrop { background: rgba(23, 32, 46, 0.45); backdrop-filter: blur(3px); }
+dialog.modal .head {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--edge-soft);
 }
-dialog#log-dialog h2 { margin: 0; font-size: 15px; flex: 1; }
-dialog#log-dialog pre {
+dialog.modal h2 { margin: 0; font-size: 15px; flex: 1; }
+dialog.modal pre {
   flex: 1;
   margin: 0;
   padding: 14px 16px;
@@ -568,3 +568,107 @@ dialog#log-dialog pre {
   .field { animation: none; }
   button, .bar-fill { transition: none; }
 }
+/* --- settings --- */
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px 18px 20px;
+  overflow: auto;
+}
+.settings-body section { display: flex; flex-direction: column; gap: 10px; }
+.settings-body h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: var(--faint);
+}
+.env-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.env-checks li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--edge-soft);
+  font-size: 13px;
+}
+.env-checks li:last-child { border-bottom: none; }
+.env-checks .dot { transform: translateY(-1px); }
+.env-checks .detail { margin-left: auto; text-align: right; color: var(--faint); font-size: 12px; max-width: 55%; }
+.env-checks li.bad .detail { color: var(--bad); }
+#build-log {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(23, 32, 46, 0.05);
+  border: 1px solid var(--edge-soft);
+  font: 11.5px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* --- the tour --- */
+
+.tour-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px 20px;
+  overflow: auto;
+}
+.tour-body h3 { margin: 0; font-size: 16px; font-weight: 650; }
+.tour-body section { display: flex; flex-direction: column; gap: 12px; }
+.tour-dots { list-style: none; display: flex; gap: 8px; margin: 0; padding: 0; }
+.tour-dots li {
+  width: 26px;
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(23, 32, 46, 0.12);
+}
+.tour-dots li.on { background: var(--accent); }
+.tour-example {
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: rgba(29, 78, 216, 0.07);
+  border: 1px solid rgba(29, 78, 216, 0.25);
+  font-size: 13px;
+}
+.tour-flagged { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tour-flagged li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fbe9e7;
+  border: 1px solid rgba(179, 38, 30, 0.25);
+  font-size: 13px;
+}
+.tour-flagged span { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 600; }
+.tour-flagged em { font-style: normal; color: var(--muted); font-size: 12px; margin-left: auto; }
+.tour-nav { margin-top: 4px; }
+.tour-body code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: rgba(23, 32, 46, 0.06);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+/* --- icon buttons --- */
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 12px;
+}
+.icon-btn svg { width: 17px; height: 17px; display: block; }
+.icon-btn .badge { margin-left: 0; }
