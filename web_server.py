@@ -29,6 +29,7 @@ import virustotal
 from triage_state import TriageState
 
 WEBUI = Path(__file__).resolve().parent / "webui"
+DOCS = Path(__file__).resolve().parent / "docs"
 # the user's sign-off that this machine is ready to triage: a timestamp, kept
 # next to the VirusTotal key and out of the repository
 CONFIGURED_FILE = Path.home() / ".config" / "triage" / "configured"
@@ -921,6 +922,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._static("index.html")
         if route.path.startswith("/static/"):
             return self._static(route.path[len("/static/"):])
+        if route.path.startswith("/docs/"):
+            return self._docs(route.path[len("/docs/"):])
         if route.path == "/api/report.pdf":
             return self._report_pdf(parse_qs(route.query))
         if route.path == "/api/settings":
@@ -1072,13 +1075,19 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def _static(self, name: str):
-        # keep requests inside webui/ no matter what the path contains
-        target = (WEBUI / name).resolve()
-        if not str(target).startswith(str(WEBUI.resolve())) or not target.is_file():
+        return self._serve_file(WEBUI, name, tokenize=True)
+
+    def _docs(self, name: str):
+        return self._serve_file(DOCS, name)
+
+    def _serve_file(self, base: Path, name: str, tokenize: bool = False):
+        # keep requests inside base/ no matter what the path contains
+        target = (base / name).resolve()
+        if not str(target).startswith(str(base.resolve())) or not target.is_file():
             return self._json(404, {"error": "no such file"})
         kind = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
         body = target.read_bytes()
-        if target.name == "index.html":
+        if tokenize and target.name == "index.html":
             body = body.replace(b"__TOKEN__", self.token.encode())
             # the UI is cached by the browser, and a stale app.js against a new
             # page is a frozen UI: it throws on the first render and never

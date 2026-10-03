@@ -44,8 +44,8 @@
   <nav class="rail glass" aria-label="progress">
     <ol>
       <li data-step="1"><b>1</b><span><em>awaiting</em><small>device</small></span></li>
-      <li data-step="2"><b>2</b><span><em>intake</em><small>reviewDispatch</small></span></li>
-      <li data-step="3"><b>3</b><span><em>analysis</em><small>scanVerdict</small></span></li>
+      <li data-step="2"><b>2</b><span><em>intake</em><small>review dispatch</small></span></li>
+      <li data-step="3"><b>3</b><span><em>analysis</em><small>scan verdict</small></span></li>
       <li data-step="4"><b>4</b><span><em>report</em><small>findings</small></span></li>
     </ol>
 
@@ -58,7 +58,7 @@
 
     <!-- 1 ------------------------------------------------------------------ -->
     <article data-stage="1">
-      <h2>awaitingDevice</h2>
+      <h2>awaiting device</h2>
       <p class="hint">Plug a storage device in now. A device that was already plugged in
         when the app started is ignored on purpose, so what gets triaged is always the
         device you just connected.</p>
@@ -69,7 +69,7 @@
 
     <!-- 2 ------------------------------------------------------------------ -->
     <article data-stage="2" hidden>
-      <h2>deviceIntake</h2>
+      <h2>device intake</h2>
       <p class="hint">This is the subject of the triage. Check it, send it to the VM,
         then run the scan.</p>
 
@@ -95,7 +95,7 @@
 
     <!-- 3 ------------------------------------------------------------------ -->
     <article data-stage="3" hidden>
-      <h2>forensicAnalysis</h2>
+      <h2>forensic analysis</h2>
 
       <div class="scan-status">
         <span class="pulse" aria-hidden="true"></span>
@@ -114,7 +114,7 @@
         <header class="sheet-head">
           <div>
             <p class="sheet-kicker">airlock &middot; forensic report</p>
-            <h2>triageReport</h2>
+            <h2>triage report</h2>
             <p class="sheet-device" id="sheet-device">no device</p>
           </div>
           <div class="sheet-verdict" id="sheet-verdict">
@@ -133,13 +133,13 @@
         </dl>
 
         <section class="sheet-flagged" id="flagged-block" hidden>
-          <h3>flaggedFiles</h3>
+          <h3>flagged files</h3>
           <ul id="flagged-list"></ul>
         </section>
 
         <section class="sheet-listing" id="listing-block" hidden>
           <div class="listing-head">
-            <h3>allFiles</h3>
+            <h3>all files</h3>
             <button id="btn-toggle-files" class="sheet-toggle">show</button>
           </div>
           <div class="tablewrap" id="report-table-wrap" hidden>
@@ -188,7 +188,7 @@
       <ul class="env-checks" id="env-checks"><li>checking…</li></ul>
     </section>
     <section>
-      <h3>goldenImage</h3>
+      <h3>golden image</h3>
       <p class="hint">Rebuilding takes several minutes and needs root or fakeroot.
         Stop the VM and finish or forget the device first.</p>
       <div class="actions">
@@ -209,26 +209,28 @@
 
 <dialog id="tour-dialog" class="glass modal">
   <div class="head">
-    <h2>howAirlockWorksWithExampleData</h2>
+    <h2>how airlock works</h2>
     <button id="btn-tour-close" class="ghost">close</button>
   </div>
   <div class="tour-body">
+    <p class="hint">A walkthrough with example data — nothing here touches a real case.</p>
     <ol class="tour-dots" id="tour-dots">
       <li data-tour-dot="1"></li><li data-tour-dot="2"></li>
       <li data-tour-dot="3"></li><li data-tour-dot="4"></li>
     </ol>
 
     <section data-tour="1">
-      <h3>1 · awaitingDevice</h3>
+      <h3>1 · awaiting device</h3>
       <p class="hint">Plug the suspect drive in <b>after</b> the app has started.
         Anything already connected is ignored on purpose, so the subject is always
         the drive you just plugged in. Example: you connect
         <code>/dev/sdb</code> and the alert appears.</p>
       <div class="tour-example">storage found: /dev/sdb · 29.3 GiB</div>
+      <img class="tour-shot" src="/docs/1-awaitingDevice.png" alt="awaiting device step">
     </section>
 
     <section data-tour="2" hidden>
-      <h3>2 · deviceIntake</h3>
+      <h3>2 · device intake</h3>
       <p class="hint">Check the subject, then send the whole disk to the disposable
         guest — read-only, never mounted on the host. <b>Scan files</b> unlocks
         once the disk is inside the VM.</p>
@@ -238,19 +240,21 @@
         <div><dt>model</dt><dd>SanDisk Ultra</dd></div>
         <div><dt>in the VM</dt><dd>/dev/vdb (read-only)</dd></div>
       </dl>
+      <img class="tour-shot" src="/docs/2-deviceIntake.png" alt="device intake step">
     </section>
 
     <section data-tour="3" hidden>
-      <h3>3 · forensicAnalysis</h3>
+      <h3>3 · forensic analysis</h3>
       <p class="hint">The guest walks the filesystems and hashes every file. Each
         hash is looked up on VirusTotal from the host — file contents never leave
         the guest. Example mid-scan:</p>
       <div class="tour-example">12,408 records walked · 214 of 312 hashes checked · 2 flagged</div>
       <div class="bar big"><div class="bar-fill" style="width: 68%"></div></div>
+      <img class="tour-shot" src="/docs/3-forensicAnalysis.png" alt="forensic analysis step">
     </section>
 
     <section data-tour="4" hidden>
-      <h3>4 · triageReport</h3>
+      <h3>4 · triage report</h3>
       <p class="hint">One verdict line, four numbers, the flagged files, then every
         file. <b>Export report</b> downloads exactly this as a PDF, and
         <b>Stop VM</b> destroys the guest. Example:</p>
@@ -259,6 +263,7 @@
         <li><span>invoice.docm</span><em>38/68 engines</em></li>
         <li><span>setup.exe</span><em>45/70 engines</em></li>
       </ul>
+      <img class="tour-shot" src="/docs/4-triageReport.png" alt="triage report step">
     </section>
 
     <div class="actions tour-nav">

@@ -672,3 +672,10 @@ dialog.modal pre {
 }
 .icon-btn svg { width: 17px; height: 17px; display: block; }
 .icon-btn .badge { margin-left: 0; }
+
+.tour-shot {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  box-shadow: 0 8px 24px rgba(23, 32, 46, 0.12);
+}

@@ -262,6 +262,23 @@ class EndpointTests(unittest.TestCase):
         except urllib.error.HTTPError as exc:
             self.assertEqual(exc.code, 404)
 
+    def test_the_docs_serve_pictures_and_nothing_else(self):
+        import urllib.request
+        for path in ("../web_server.py", "..%2Fweb_server.py",
+                     "no-such-file.png"):
+            with self.assertRaises(urllib.error.HTTPError) as refused:
+                urllib.request.urlopen(
+                    f"http://127.0.0.1:{self.port}/docs/{path}")
+            self.assertEqual(refused.exception.code, 404)
+        import pathlib as _pathlib
+        pictures = sorted(_pathlib.Path("docs").glob("*.png"))
+        self.assertTrue(pictures, "no example pictures to serve")
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{self.port}/docs/{pictures[0].name}") as response:
+            self.assertEqual(response.status, 200)
+            self.assertIn("image/png", response.headers["Content-Type"])
+            self.assertTrue(response.read().startswith(b"\x89PNG"))
+
     def test_the_page_versions_its_assets_so_deploys_land_whole(self):
         import urllib.request
         page = urllib.request.urlopen(
