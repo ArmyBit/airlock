@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Storage triage</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="field" aria-hidden="true"></div>
+
+<header class="topbar glass">
+  <div class="brand">
+    <h1>Storage triage</h1>
+    <p class="subtitle" id="device-line">no device yet</p>
+  </div>
+  <div class="spacer"></div>
+  <div class="pill" id="state-pill">idle</div>
+  <div class="chips">
+    <span class="chip"><span class="dot" id="vm-dot"></span><span id="vm-status">VM stopped</span></span>
+    <span class="chip" title="live updates over websocket, polling is only the fallback">
+      <span class="dot" id="live-dot"></span><span id="live-status">connecting</span>
+    </span>
+  </div>
+  <button id="btn-log" class="ghost" aria-haspopup="dialog">
+    events <span class="badge" id="log-badge" hidden>new</span>
+  </button>
+</header>
+
+<div class="toast" id="toast" hidden>
+  <span id="toast-text"></span>
+  <button id="toast-go">Review</button>
+  <button id="toast-x" class="toast-x" aria-label="dismiss">×</button>
+</div>
+
+<main class="stage">
+  <nav class="rail glass" aria-label="progress">
+    <ol>
+      <li data-step="1"><b>1</b><span><em>Awaiting</em><small>device</small></span></li>
+      <li data-step="2"><b>2</b><span><em>Intake</em><small>review &amp; dispatch</small></span></li>
+      <li data-step="3"><b>3</b><span><em>Analysis</em><small>scan &amp; verdict</small></span></li>
+      <li data-step="4"><b>4</b><span><em>Report</em><small>findings</small></span></li>
+    </ol>
+
+    <p class="rail-note" id="rail-note">Evidence is never mounted on the host. The disk
+      goes to the disposable guest read-only, hashing happens in the guest, and only
+      hashes go to VirusTotal.</p>
+  </nav>
+
+  <section class="panel glass" id="panel">
+
+    <!-- 1 ------------------------------------------------------------------ -->
+    <article data-stage="1">
+      <h2>Awaiting Device</h2>
+      <p class="hint">Plug a storage device in now. A device that was already plugged in
+        when the app started is ignored on purpose, so what gets triaged is always the
+        device you just connected.</p>
+      <p class="wait" id="wait-hint">listening for storage devices…</p>
+    </article>
+
+    <!-- 2 ------------------------------------------------------------------ -->
+    <article data-stage="2" hidden>
+      <h2>Device Intake</h2>
+      <p class="hint">This is the subject of the triage. Check it, send it to the VM,
+        then run the scan.</p>
+
+      <dl class="info" id="device-info">
+        <div><dt>device</dt><dd id="d-devnode">-</dd></div>
+        <div><dt>size</dt><dd id="d-size">-</dd></div>
+        <div><dt>model</dt><dd id="d-model">-</dd></div>
+        <div><dt>serial</dt><dd id="d-serial">-</dd></div>
+        <div><dt>bus</dt><dd id="d-bus">-</dd></div>
+        <div><dt>filesystem</dt><dd id="d-fstype">-</dd></div>
+        <div><dt>label</dt><dd id="d-label">-</dd></div>
+        <div><dt>on the host</dt><dd id="a-hostnode">-</dd></div>
+        <div><dt>in the VM</dt><dd id="a-guest">not attached yet</dd></div>
+        <div><dt>VM</dt><dd id="d-vmstatus">starting</dd></div>
+      </dl>
+
+      <div class="actions">
+        <button id="btn-send-to-vm" data-action="send_to_vm" class="primary">Send to VM</button>
+        <button id="btn-scan" data-action="scan_device" class="primary">Scan files</button>
+      </div>
+      <p class="hint" id="attach-hint">The disk goes in whole and read-only. The host never mounts it.</p>
+    </article>
+
+    <!-- 3 ------------------------------------------------------------------ -->
+    <article data-stage="3" hidden>
+      <h2>Forensic Analysis</h2>
+
+      <div class="scan-status">
+        <span class="pulse" aria-hidden="true"></span>
+        <p class="scan-phase" id="scan-phase">starting the scan…</p>
+      </div>
+
+      <p class="scan-counts" id="scan-counts"></p>
+
+      <div class="bar big"><div class="bar-fill" id="vt-bar"></div></div>
+      <p class="hint" id="scan-detail"></p>
+    </article>
+
+    <!-- 6 ------------------------------------------------------------------ -->
+    <article data-stage="4" hidden>
+      <div class="sheet">
+        <header class="sheet-head">
+          <div>
+            <p class="sheet-kicker">storage triage &middot; forensic report</p>
+            <h2>Triage Report</h2>
+            <p class="sheet-device" id="sheet-device">no device</p>
+          </div>
+          <div class="sheet-verdict" id="sheet-verdict">
+            <span class="sheet-count" id="r-malicious">0</span>
+            <span class="sheet-label">flagged</span>
+          </div>
+        </header>
+
+        <p class="sheet-line" id="verdict">nothing scanned yet</p>
+
+        <dl class="sheet-stats" id="report-summary" hidden>
+          <div><dt>files</dt><dd id="r-files">0</dd></div>
+          <div><dt>clean</dt><dd id="r-clean">0</dd></div>
+          <div><dt>unknown</dt><dd id="r-unknown">0</dd></div>
+          <div><dt>seconds</dt><dd id="r-seconds">0</dd></div>
+        </dl>
+
+        <section class="sheet-flagged" id="flagged-block" hidden>
+          <h3>Flagged files</h3>
+          <ul id="flagged-list"></ul>
+        </section>
+
+        <section class="sheet-listing" id="listing-block" hidden>
+          <div class="listing-head">
+            <h3>All files</h3>
+            <button id="btn-toggle-files" class="sheet-toggle">show</button>
+          </div>
+          <div class="tablewrap" id="report-table-wrap" hidden>
+            <table>
+              <thead>
+                <tr>
+                  <th>verdict</th><th>detections</th><th>size</th><th>hidden</th>
+                  <th>path</th><th>sha256</th><th>virustotal</th>
+                </tr>
+              </thead>
+              <tbody id="report-rows"></tbody>
+            </table>
+          </div>
+          <p class="sheet-note" id="listing-note"></p>
+        </section>
+
+        <p class="sheet-meta" id="report-meta" hidden></p>
+      </div>
+
+      <div class="actions end">
+        <button id="btn-stop-vm" data-action="stop_vm" class="danger">Stop VM</button>
+        <button id="btn-export" class="primary">Export report</button>
+      </div>
+    </article>
+
+    <p class="error" id="stage-error" hidden></p>
+  </section>
+</main>
+
+<dialog id="log-dialog" class="glass">
+  <div class="head">
+    <h2>Events</h2>
+    <button id="btn-log-close" class="ghost">close</button>
+  </div>
+  <pre id="log"></pre>
+</dialog>
+
+<script>window.TRIAGE_TOKEN = "__TOKEN__";</script>
+<script src="/static/app.js"></script>
+</body>
+</html>

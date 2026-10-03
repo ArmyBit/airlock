@@ -1,0 +1,22 @@
+# generated guest artifacts - reproducible with tiny-linux/build_golden_image.py
+tiny-linux/golden.qcow2
+tiny-linux/boot-initramfs.cpio.gz
+tiny-linux/initramfs.cpio.gz
+tiny-linux/build/
+tiny-linux/__pycache__/
+
+# SSH keys generated at build time - never commit private keys
+tiny-linux/keys/
+
+# python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
+# local runtime
+*.log
+*.pid
+.DS_Store

@@ -1,0 +1,20 @@
+<!-- The dedicated host<->guest link, defined once on the host.
+
+     forward mode 'none' means this network has no route to anything else: no
+     NAT, no uplink, no gateway. The host gets 192.168.77.1 on the bridge and
+     the guest is static at 192.168.77.10, so the two can only ever see each
+     other. This is stronger than filtering in the guest, because a guest
+     kernel compromise cannot invent a route that was never configured.
+
+     Used by triage_vm.py; see ARCHITECTURE.md.
+-->
+<network>
+  <name>triage</name>
+  <forward mode='none'/>
+  <bridge name='virbr-triage' stp='on' delay='0'/>
+  <ip address='192.168.77.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.77.100' end='192.168.77.150'/>
+    </dhcp>
+  </ip>
+</network>
